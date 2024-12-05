@@ -31,6 +31,20 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str | None = None
     EMAILS_FROM_EMAIL: str | None = None
     EMAILS_FROM_NAME: str | None = None
+    
+    # Performance settings
+    MAX_FPS: int = 30
+    DETECTION_CONFIDENCE_THRESHOLD: float = 0.5
+    MAX_IMAGE_DIMENSION: int = 640
+    JPEG_QUALITY: int = 80
+    
+    # Hardware acceleration
+    USE_CUDA: bool = True
+    CUDA_DEVICE: int = 0
+    
+    # WebSocket settings
+    WS_MAX_CONNECTIONS: int = 100
+    WS_HEARTBEAT_INTERVAL: int = 30
 
     @property
     def sqlalchemy_database_url(self) -> str:
