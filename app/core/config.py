@@ -1,59 +1,60 @@
-from typing import List
 from pydantic_settings import BaseSettings
-import secrets
+from functools import lru_cache
+from typing import Optional
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "Person of Interest"
-    API_V1_STR: str = "/api/v1"
-    SECRET_KEY: str = secrets.token_urlsafe(32)
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
-    ALGORITHM: str = "HS256"
+    """Application settings with environment variable support"""
     
     # Database
-    POSTGRES_SERVER: str
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
     POSTGRES_DB: str
-    DATABASE_URI: str | None = None
+    POSTGRES_HOST: str = "localhost"
+    POSTGRES_PORT: int = 5432
     
-    # CORS
-    BACKEND_CORS_ORIGINS: List[str] = ["*"]
-    
-    # Logging
-    LOG_LEVEL: str = "INFO"
-    LOG_FILE: str = "/opt/person_of_interest/logs/app.log"
-    
-    # Email
-    SMTP_TLS: bool = True
-    SMTP_PORT: int | None = None
-    SMTP_HOST: str | None = None
-    SMTP_USER: str | None = None
-    SMTP_PASSWORD: str | None = None
-    EMAILS_FROM_EMAIL: str | None = None
-    EMAILS_FROM_NAME: str | None = None
-    
-    # Performance settings
-    MAX_FPS: int = 30
-    DETECTION_CONFIDENCE_THRESHOLD: float = 0.5
-    MAX_IMAGE_DIMENSION: int = 640
-    JPEG_QUALITY: int = 80
-    
-    # Hardware acceleration
-    USE_CUDA: bool = True
-    CUDA_DEVICE: int = 0
-    
-    # WebSocket settings
-    WS_MAX_CONNECTIONS: int = 100
+    # WebSocket
+    WS_HOST: str = "0.0.0.0"
+    WS_PORT: int = 8000
     WS_HEARTBEAT_INTERVAL: int = 30
+    MAX_CONNECTIONS_PER_CLIENT: int = 1
+    
+    # ML Model Settings
+    YOLO_MODEL_PATH: str = "yolov8n.pt"
+    FACE_MODEL_PATH: str = "models/dlib_face_recognition_resnet_model_v1.dat"
+    
+    # Performance
+    FRAME_PROCESSING_BATCH_SIZE: int = 4
+    MAX_CONCURRENT_PROCESSORS: int = 4
+    
+    # Video Processing
+    MAX_VIDEO_DIMENSION: int = 1280
+    JPEG_QUALITY: int = 85
+    
+    # Geofencing
+    MAX_GEOFENCE_RADIUS_METERS: float = 1000.0
+    
+    # CORS settings
+    CORS_ORIGINS: list[str] = ["*"]
+    CORS_ALLOW_METHODS: list[str] = ["*"]
+    CORS_ALLOW_HEADERS: list[str] = ["*"]
+    
+    # Server settings
+    HOST: str = "0.0.0.0"
+    PORT: int = 8000
+    
+    # Authentication settings
+    SECRET_KEY: str = "0ur0buroS8888"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRATION_DAYS: int = 1
+    WS_PING_INTERVAL: int = 30
+    WS_CONNECTION_TIMEOUT: int = 60
 
-    @property
-    def sqlalchemy_database_url(self) -> str:
-        if self.DATABASE_URI:
-            return self.DATABASE_URI
-        return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}/{self.POSTGRES_DB}"
+    model_config = {
+        "env_file": ".env",
+        "extra": "allow",
+        "case_sensitive": True
+    }
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
-
-settings = Settings()
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings() 

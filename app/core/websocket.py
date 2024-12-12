@@ -1,65 +1,69 @@
-from fastapi import WebSocket
-from typing import Dict, Set
-import json
 import asyncio
-from .config import settings
+from fastapi import WebSocket
+from typing import Dict, Set, List
+import json
+import logging
+from .config import get_settings
+
+settings = get_settings()
+logger = logging.getLogger(__name__)
 
 class WebSocketManager:
+    """Manages WebSocket connections and message broadcasting"""
+    
     def __init__(self):
-        self.active_connections: Dict[int, Set[WebSocket]] = {}
+        self.active_connections: Dict[str, WebSocket] = {}
         self._lock = asyncio.Lock()
-
-    async def connect(self, websocket: WebSocket, user_id: int):
+        
+    async def connect(self, websocket: WebSocket, client_id: str):
+        """Connect new client"""
         await websocket.accept()
         async with self._lock:
-            if user_id not in self.active_connections:
-                self.active_connections[user_id] = set()
-            self.active_connections[user_id].add(websocket)
-
-    async def disconnect(self, websocket: WebSocket, user_id: int):
+            self.active_connections[client_id] = websocket
+        logger.info(f"Client {client_id} connected")
+    
+    async def disconnect(self, client_id: str):
+        """Disconnect client"""
         async with self._lock:
-            if user_id in self.active_connections:
-                self.active_connections[user_id].discard(websocket)
-                if not self.active_connections[user_id]:
-                    del self.active_connections[user_id]
+            if client_id in self.active_connections:
+                del self.active_connections[client_id]
+                logger.info(f"Client {client_id} disconnected")
+    
+    async def send_message(self, client_id: str, message: dict):
+        """Send message to specific client"""
+        if client_id in self.active_connections:
+            try:
+                await self.active_connections[client_id].send_json(message)
+                logger.debug(f"Sent message to client {client_id}")
+            except Exception as e:
+                logger.error(f"Error sending message to client {client_id}: {e}")
+                await self.disconnect(client_id)
 
-    async def broadcast_to_user(self, user_id: int, message: dict):
-        if user_id in self.active_connections:
-            disconnected = set()
-            for connection in self.active_connections[user_id]:
-                try:
-                    await connection.send_json(message)
-                except:
-                    disconnected.add(connection)
-            
-            # Clean up disconnected sessions
-            if disconnected:
-                async with self._lock:
-                    self.active_connections[user_id] -= disconnected
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, List[WebSocket]] = {}
 
-    async def broadcast_proximity_alert(self, alert: dict, radius_meters: float = 200):
-        """Broadcast proximity alert to nearby users"""
-        target_location = (alert["latitude"], alert["longitude"])
-        
-        for user_id, connections in self.active_connections.items():
-            # Check if user is within radius
-            user_location = await self.get_user_location(user_id)
-            if user_location and self.calculate_distance(
-                target_location, user_location
-            ) <= radius_meters:
-                await self.broadcast_to_user(user_id, {
-                    "type": "proximity_alert",
-                    "data": alert
-                })
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        client_id = id(websocket)  # Use websocket id as temporary client id
+        if client_id not in self.active_connections:
+            self.active_connections[client_id] = []
+        self.active_connections[client_id].append(websocket)
 
-    def calculate_distance(self, point1: tuple, point2: tuple) -> float:
-        """Calculate distance between two points in meters"""
-        from geopy.distance import geodesic
-        return geodesic(point1, point2).meters
+    def disconnect(self, websocket: WebSocket):
+        client_id = id(websocket)
+        if client_id in self.active_connections:
+            self.active_connections[client_id].remove(websocket)
+            if not self.active_connections[client_id]:
+                del self.active_connections[client_id]
 
-    async def get_user_location(self, user_id: int) -> tuple:
-        """Get user's last known location"""
-        # TODO: Implement user location tracking
-        return None
+    async def send_personal_message(self, message: dict, websocket: WebSocket):
+        await websocket.send_json(message)
 
-websocket_manager = WebSocketManager()
+    async def broadcast(self, message: str):
+        for connections in self.active_connections.values():
+            for connection in connections:
+                await connection.send_text(message)
+
+# Global WebSocket manager instance
+ws_manager = WebSocketManager() 

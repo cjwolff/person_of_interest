@@ -1,28 +1,176 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Response, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1.api import api_router
-from app.core.config import settings
-from app.core.logging import setup_logging
+from pydantic import BaseModel, ValidationError
+import numpy as np
+import cv2
+import base64
+from typing import List, Dict, Optional
+from datetime import datetime
+import logging
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, Counter, Histogram
+import warnings
+import os
 
-# Setup logging
-setup_logging()
+# Import services
+from .services.tracking_service import TrackingService
+from .services.face_detection_service import FaceDetectionService
+from .services.object_detection_service import ObjectDetectionService
+from .services.ar_service import ARService
+from .services.behavior_analysis_service import BehaviorAnalysisService
+from .services.geofencing_service import GeofencingService
+from .services.video_processor import VideoProcessor
 
-app = FastAPI(
-    title=settings.PROJECT_NAME,
-    description="Backend API for Person of Interest mobile application",
-    version="1.0.0",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
+# Import core components
+from .core.websocket import WebSocketManager
+from .core.auth import WebSocketAuthManager
+
+# Set up logging
+logger = logging.getLogger(__name__)
+
+# Import models
+from .models.detection import Detection, FaceLandmarks, DetectionResponse
+from .models.frame import FrameRequest
+
+# Import routes
+from .api.routes import auth
+from .api.websocket_handler import SurveillanceWebSocketHandler
+from .api.websocket_routes import router as websocket_router  # Changed this line
+
+app = FastAPI(title="Person of Interest API")
+
+# Initialize managers
+ws_manager = WebSocketManager()
+auth_manager = WebSocketAuthManager()
+
+# Initialize services
+face_detector = FaceDetectionService()
+object_detector = ObjectDetectionService()
+tracker = TrackingService()
+behavior_analyzer = BehaviorAnalysisService()
+geofencing = GeofencingService()
+video_processor = VideoProcessor()
+ar_service = ARService(object_detector=object_detector, face_detector=face_detector)
+
+# Initialize WebSocket handler
+ws_handler = SurveillanceWebSocketHandler(
+    websocket_manager=ws_manager,
+    video_processor=video_processor,
+    ar_service=ar_service,
+    behavior_service=behavior_analyzer,
+    geofencing_service=geofencing
 )
 
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.BACKEND_CORS_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include API routes
-app.include_router(api_router, prefix=settings.API_V1_STR)
+# Include routers
+app.include_router(auth.router)
+app.include_router(
+    websocket_router,
+    prefix="/ws",
+    tags=["websocket"]
+)
+
+# Add health check endpoint
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
+
+async def process_frame(image: np.ndarray) -> DetectionResponse:
+    """Process a frame using the initialized services"""
+    try:
+        # Detect faces and objects
+        faces = await face_detector.detect_faces(image)
+        objects = await object_detector.detect(image)
+        
+        # Update tracking with frame
+        tracked_objects = await tracker.update(objects, frame=image)
+        
+        # Get AR data
+        ar_data = await ar_service.process_frame(image, faces, tracked_objects)
+        
+        # Analyze behavior
+        behavior_data = await behavior_analyzer.analyze(tracked_objects)
+        
+        # Check geofencing
+        geofencing_alerts = await geofencing.check(tracked_objects)
+        
+        return DetectionResponse(
+            faces=faces,
+            objects=tracked_objects,
+            ar_data=ar_data,
+            behavior_analysis=behavior_data,
+            geofencing_alerts=geofencing_alerts
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in process_frame: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "Frame processing error", "message": str(e)}
+        )
+
+@app.post("/api/detect")
+async def detect_frame(request: FrameRequest):
+    try:
+        logger.debug(f"Received frame. Size: {request.width}x{request.height}")
+        logger.debug(f"Metadata: {request.metadata}")
+        
+        # Decode base64 image
+        try:
+            image_bytes = base64.b64decode(request.image)
+            nparr = np.frombuffer(image_bytes, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            if img is None:
+                logger.error("Failed to decode image data")
+                raise HTTPException(status_code=400, detail="Invalid image data")
+                
+            # Log successful decode
+            logger.debug(f"Successfully decoded image. Shape: {img.shape}")
+            
+            # Process frame
+            results = await process_frame(img)
+            return results
+            
+        except Exception as decode_error:
+            logger.error(f"Image decoding error: {decode_error}")
+            raise HTTPException(
+                status_code=400, 
+                detail={"error": "Image decoding error", "message": str(decode_error)}
+            )
+            
+    except ValidationError as ve:
+        logger.error(f"Validation error: {ve}")
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "Validation error", "message": str(ve)}
+        )
+    except Exception as e:
+        logger.error(f"Error processing frame: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "Processing error", "message": str(e)}
+        )
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint"""
+    return Response(
+        content=generate_latest().decode("utf-8"),
+        media_type=CONTENT_TYPE_LATEST
+    )
+
+if __name__ == "__main__":
+    import uvicorn
+    # Suppress warnings
+    warnings.filterwarnings('ignore', category=FutureWarning)
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress TensorFlow logging
+    logging.getLogger('tensorflow').setLevel(logging.ERROR)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
