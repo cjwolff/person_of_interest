@@ -1,9 +1,8 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from ...core.auth import WebSocketAuthManager
+from fastapi import APIRouter, Depends, HTTPException
+from app.core.auth import get_current_user
+from app.models.user import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-auth_manager = WebSocketAuthManager()
 
 class TokenRequest(BaseModel):
     client_id: str

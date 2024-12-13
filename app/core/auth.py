@@ -1,8 +1,10 @@
-from fastapi import HTTPException, WebSocket
-from typing import Optional, Dict
-import jwt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from typing import Optional
 from datetime import datetime, timedelta
-from ..config import get_settings
+import jwt
+from app.core.config import get_settings
+from app.models.user import User
 
 settings = get_settings()
 

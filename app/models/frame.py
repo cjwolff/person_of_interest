@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
+from app.core.config import get_settings  # Changed from ..core
 
 class FrameRequest(BaseModel):
     image: str  # base64 encoded image

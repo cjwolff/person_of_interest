@@ -3,6 +3,7 @@ from .base import Base, TimestampMixin
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 from datetime import datetime
+from app.core.config import get_settings
 
 class FaceLandmarks(BaseModel):
     x: float

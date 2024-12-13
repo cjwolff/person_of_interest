@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.core.database import Base, get_db
 from app.main import app
 from app.core.config import get_settings
+from app.core.websocket import WebSocketManager
 
 settings = get_settings()
 
@@ -13,7 +14,6 @@ settings = get_settings()
 TEST_DATABASE_URL = (
     f"postgresql+asyncpg://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}"
     f"@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/test_db"
-    "?prepared_statement_cache_size=0"
 )
 
 @pytest.fixture(scope="session")

@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from app.core.websocket import WebSocketManager
 import logging
 from typing import Dict
 

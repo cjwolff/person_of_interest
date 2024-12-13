@@ -4,6 +4,7 @@ from fastapi.websockets import WebSocket
 from app.main import app
 import asyncio
 from unittest.mock import AsyncMock, patch
+from app.core.websocket import WebSocketManager
 
 @pytest.mark.asyncio
 async def test_websocket_connection():

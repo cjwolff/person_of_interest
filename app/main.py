@@ -12,29 +12,30 @@ import warnings
 import os
 
 # Import services
-from .services.tracking_service import TrackingService
-from .services.face_detection_service import FaceDetectionService
-from .services.object_detection_service import ObjectDetectionService
-from .services.ar_service import ARService
-from .services.behavior_analysis_service import BehaviorAnalysisService
-from .services.geofencing_service import GeofencingService
-from .services.video_processor import VideoProcessor
+from app.services.tracking_service import TrackingService
+from app.services.face_detection_service import FaceDetectionService
+from app.services.object_detection_service import ObjectDetectionService
+from app.services.ar_service import ARService
+from app.services.behavior_analysis_service import BehaviorAnalysisService
+from app.services.geofencing_service import GeofencingService
+from app.services.video_processor import VideoProcessor
+from app.ml_engine import MLEngine
 
 # Import core components
-from .core.websocket import WebSocketManager
-from .core.auth import WebSocketAuthManager
+from app.core.websocket import WebSocketManager
+from app.core.auth import WebSocketAuthManager
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 # Import models
-from .models.detection import Detection, FaceLandmarks, DetectionResponse
-from .models.frame import FrameRequest
+from app.models.detection import Detection, FaceLandmarks, DetectionResponse
+from app.models.frame import FrameRequest
 
 # Import routes
-from .api.routes import auth
-from .api.websocket_handler import SurveillanceWebSocketHandler
-from .api.websocket_routes import router as websocket_router  # Changed this line
+from app.api.routes import auth
+from app.api.websocket_handler import SurveillanceWebSocketHandler
+from app.api.websocket_routes import router as websocket_router
 
 app = FastAPI(title="Person of Interest API")
 
@@ -46,10 +47,19 @@ auth_manager = WebSocketAuthManager()
 face_detector = FaceDetectionService()
 object_detector = ObjectDetectionService()
 tracker = TrackingService()
+ar_service = ARService(object_detector=object_detector, face_detector=face_detector)
 behavior_analyzer = BehaviorAnalysisService()
 geofencing = GeofencingService()
 video_processor = VideoProcessor()
-ar_service = ARService(object_detector=object_detector, face_detector=face_detector)
+
+# Initialize ML engine with services
+ml_engine = MLEngine(
+    face_detector=face_detector,
+    object_detector=object_detector,
+    tracker=tracker,
+    ar_service=ar_service,
+    behavior_analyzer=behavior_analyzer
+)
 
 # Initialize WebSocket handler
 ws_handler = SurveillanceWebSocketHandler(

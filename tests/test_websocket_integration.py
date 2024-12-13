@@ -1,8 +1,10 @@
 import pytest
 import asyncio
-from test_websocket_server import app
-from test_websocket_client import test_websocket_connection
+import uvicorn
 from fastapi.testclient import TestClient
+from app.main import app
+from app.core.websocket import WebSocketManager
+from test_websocket_client import test_websocket_connection
 import logging
 
 @pytest.fixture
